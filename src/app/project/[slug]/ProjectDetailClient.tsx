@@ -159,39 +159,31 @@ export default function ProjectDetailClient({ project, otherProjects }: Props) {
             </div>
           ) : (
             images.map((photo, index) => {
-              // Alternating rhythm: index % 3 === 0 is full width cinematic, others are staggered
-              const isCinematicWide = index === 0 || index % 4 === 0;
-
               return (
                 <figure
                   key={photo.id || index}
                   onClick={() => handleOpenPhoto(index)}
-                  className="group relative cursor-pointer rounded-2xl overflow-hidden bg-zinc-900/80 border border-white/10 hover:border-white/30 transition-all duration-300 shadow-2xl shadow-black/60"
+                  className="group relative cursor-pointer rounded-2xl overflow-hidden bg-zinc-950/90 border border-white/10 hover:border-white/30 transition-all duration-300 shadow-2xl shadow-black/80"
                 >
-                  <div
-                    className={`relative w-full overflow-hidden bg-zinc-950 flex items-center justify-center ${
-                      isCinematicWide ? 'aspect-[16/10] sm:aspect-[21/10]' : 'aspect-[4/3] sm:aspect-[16/11]'
-                    }`}
-                  >
-                    <Image
+                  <div className="relative w-full overflow-hidden bg-zinc-950 flex items-center justify-center p-2 sm:p-4 md:p-6 min-h-[300px]">
+                    {/* Natural Ratio Photograph - Full Size, Never Cropped */}
+                    <img
                       src={photo.image_url}
                       alt={photo.alt_text || project.title}
-                      fill
-                      sizes="(max-width: 768px) 100vw, 1200px"
-                      priority={index < 2}
-                      className="photo-hover-zoom object-contain sm:object-cover object-center"
+                      className="w-auto h-auto max-w-full max-h-[85vh] sm:max-h-[88vh] object-contain mx-auto rounded-xl shadow-2xl transition-transform duration-500 group-hover:scale-[1.01]"
+                      loading={index < 2 ? 'eager' : 'lazy'}
                     />
 
                     {/* Gradient Overlay & Fullscreen prompt */}
-                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                      <div className="px-4 py-2 rounded-full bg-black/60 backdrop-blur-md border border-white/20 text-white text-xs font-mono tracking-wider flex items-center gap-2 transform scale-95 group-hover:scale-100 transition-transform">
+                    <div className="absolute inset-0 bg-black/25 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
+                      <div className="px-4 py-2 rounded-full bg-black/75 backdrop-blur-md border border-white/25 text-white text-xs font-mono tracking-wider flex items-center gap-2 transform scale-95 group-hover:scale-100 transition-transform shadow-2xl">
                         <Maximize2 className="w-3.5 h-3.5 text-amber-300" />
                         <span>View Fullscreen</span>
                       </div>
                     </div>
 
                     {/* Top index badge */}
-                    <div className="absolute top-4 left-4 glass-pill px-2.5 py-1 rounded-full text-[11px] font-mono text-zinc-300 pointer-events-none">
+                    <div className="absolute top-4 left-4 glass-pill px-2.5 py-1 rounded-full text-[11px] font-mono text-zinc-300 pointer-events-none z-10">
                       {String(index + 1).padStart(2, '0')}&nbsp;/&nbsp;{String(images.length).padStart(2, '0')}
                     </div>
                   </div>

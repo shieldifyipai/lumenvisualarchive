@@ -861,19 +861,17 @@ export default function ProjectForm({ initialProject, isEdit = false }: ProjectF
                 {images.map((photo, i) => (
                   <div
                     key={i}
-                    className="rounded-2xl overflow-hidden bg-zinc-900 border border-white/10"
+                    className="rounded-2xl overflow-hidden bg-zinc-950 border border-white/10"
                   >
-                    <div className="relative aspect-[16/10] w-full">
-                      <Image
+                    <div className="relative w-full flex items-center justify-center p-3 sm:p-5 bg-zinc-950">
+                      <img
                         src={photo.image_url}
                         alt={photo.alt_text || 'Photo'}
-                        fill
-                        sizes="100vw"
-                        className="object-cover"
+                        className="w-auto h-auto max-w-full max-h-[80vh] object-contain mx-auto rounded-xl shadow-xl"
                       />
                     </div>
                     {(photo.caption || photo.alt_text) && (
-                      <div className="p-4 bg-zinc-900 text-xs text-zinc-300">
+                      <div className="p-4 bg-zinc-900/90 border-t border-white/5 text-xs text-zinc-300">
                         {photo.caption || photo.alt_text}
                       </div>
                     )}
