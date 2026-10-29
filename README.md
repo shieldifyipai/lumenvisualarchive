@@ -42,6 +42,69 @@ Website portfolio ảnh nghệ thuật và tư liệu chuyên nghiệp lấy c�
   9. **Xem trước (Preview Mode)**: Mô phỏng giao diện công khai trước khi quyết định xuất bản.
   10. **Xuất bản trực tiếp**: Lưu dữ liệu vào cơ sở dữ liệu và tự động chuyển hướng đến trang công khai của bộ ảnh đã xuất bản.
 
+### 4. REST API — Đăng bài & quản trị qua HTTP (`/api/projects`)
+- **Đọc công khai**: Mọi người truy cập được danh sách và chi tiết các bộ ảnh `published` (kèm phân trang, lọc năm, tìm kiếm) — dùng cho app di động, embed, hay bên thứ 3.
+- **Ghi có bảo vệ**: Tạo / sửa / xoá bộ ảnh yêu cầu API key (`x-api-key` hoặc `Authorization: Bearer`). Slug tự sinh từ tiêu đề (chuẩn hóa tiếng Việt) và kiểm tra trùng lặp.
+- **Riêng tư bản nháp**: Draft không bao giờ trả về cho người dùng ẩn danh — chỉ chủ key đọc được.
+- **Hai chế độ lưu trữ**: Ghi thẳng vào Supabase qua service-role khi có `SUPABASE_SERVICE_ROLE_KEY`; nếu không sẽ rơi về local fallback (demo mode) để test ngay không cần DB.
+
+#### Bảng endpoint
+
+| Endpoint | Method | Auth | Mô tả |
+|---|---|---|---|
+| `/api/projects` | `GET` | Public | Danh sách published. Query: `?year=2025&search=fog&limit=12&offset=0`. Thêm `&status=draft`/`all` cần API key. |
+| `/api/projects` | `POST` | `x-api-key` | Tạo bộ ảnh mới. |
+| `/api/projects/[id]` | `GET` | Public | Chi tiết theo id, hoặc `?by=slug` để tra theo slug. Draft chỉ key-holder đọc. |
+| `/api/projects/[id]` | `PATCH` | `x-api-key` | Cập nhật các field gửi kèm; `images` nếu có sẽ thay toàn bộ gallery. |
+| `/api/projects/[id]` | `DELETE` | `x-api-key` | Xoá vĩnh viễn bộ ảnh và ảnh con. |
+
+#### Đăng bài qua API — ví dụ
+
+```bash
+curl -X POST "http://localhost:3000/api/projects" \
+  -H "Content-Type: application/json" \
+  -H "x-api-key: your-admin-api-key" \
+  -d '{
+    "title": "Hoàng Hôn Hồ Tây",
+    "year": 2026,
+    "status": "published",
+    "category": "Phong cảnh",
+    "location": "Hà Nội, Việt Nam",
+    "camera_info": "Canon R5",
+    "description": "Bộ ảnh đăng qua REST API.",
+    "published_at": "2024-05-20T10:00:00Z",   // tuỳ chọn — ngày đăng tải (mặc định: now khi publish)
+    "created_at": "2024-05-20T09:00:00Z",     // tuỳ chọn — ngày tạo (mặc định: now)
+    "images": [
+      { "image_url": "https://.../a.jpg", "alt_text": "Mô tả ảnh", "caption": "Chú thích" },
+      { "image_url": "https://.../b.jpg", "alt_text": "Mô tả ảnh 2" }
+    ]
+  }'
+```
+
+`slug`, `cover_image`, `published_at`, `created_at` là tuỳ chọn — slug tự sinh từ `title`, cover mặc định lấy ảnh đầu tiên, `published_at`/`created_at` mặc định là thời điểm hiện tại. Gửi `published_at`/`created_at` (ISO-8601) khi cần backdate bài viết. Trả về `201` kèm `project` và `url` công khai.
+
+| Field | Bắt buộc | Mặc định | Ghi chú |
+|---|---|---|---|
+| `title` | ✅ | — | Tiêu đề bộ ảnh |
+| `slug` | — | từ `title` | Chuẩn hóa tiếng Việt, kiểm tra trùng |
+| `year` | — | năm hiện tại | Năm sáng tác (integer) |
+| `status` | — | `draft` | `draft` \| `published` |
+| `published_at` | — | `now` | Chỉ áp dụng khi `status=published` |
+| `created_at` | — | `now` | Ngày tạo bản ghi |
+| `images[]` | ✅ (≥1) | — | `image_url` bắt buộc; `alt_text`, `caption`, `width`, `height` tuỳ chọn |
+
+#### Biến môi trường API
+
+```env
+# Chuỗi bí mật xác thực write endpoints (bắt buộc trong production)
+ADMIN_API_KEY=change-me-to-a-long-random-secret
+
+# Server-side ghi thẳng vào Supabase, bypass RLS — KHÔNG prefix NEXT_PUBLIC_
+SUPABASE_SERVICE_ROLE_KEY=your-service-role-key-here
+```
+
+> **Bảo mật**: không có `ADMIN_API_KEY` thì trong `production` các write endpoint trả `503`, còn `development` mở để test nhưng draft vẫn bị chặn. `SUPABASE_SERVICE_ROLE_KEY` chỉ dùng phía server — tuyệt đối không đặt sau `NEXT_PUBLIC_` và không commit vào git.
+
 ---
 
 ## 🛠️ Công Nghệ Sử Dụng
@@ -122,6 +185,10 @@ Tệp SQL đã tự động khởi tạo bucket `project-images` với chế đ�
 │   │   ├── project/[slug]/
 │   │   │   ├── page.tsx                   # Trang chi tiết bộ ảnh (Server Component & Dynamic SEO)
 │   │   │   └── ProjectDetailClient.tsx    # Thành phần tương tác, danh sách ảnh, Lightbox trigger
+│   │   ├── api/
+│   │   │   └── projects/
+│   │   │       ├── route.ts               # GET list (public) + POST create (API key)
+│   │   │       └── [id]/route.ts          # GET detail + PATCH update + DELETE (API key)
 │   │   └── admin/
 │   │       ├── layout.tsx                 # Layout trang quản trị, kiểm tra quyền đăng nhập
 │   │       ├── login/page.tsx             # Trang đăng nhập Admin an toàn
@@ -140,9 +207,12 @@ Tệp SQL đã tự động khởi tạo bucket `project-images` với chế đ�
 │   ├── lib/
 │   │   ├── auth-service.ts                # Dịch vụ xác thực Supabase Auth + Demo session
 │   │   ├── data-service.ts                # Tầng truy xuất dữ liệu kép (Supabase + Local fallback)
+│   │   ├── api-utils.ts                   # Auth API key + validate payload cho REST API
 │   │   ├── mock-data.ts                   # Dữ liệu ảnh nghệ thuật mẫu độ nét cao
 │   │   ├── utils/slugify.ts               # Bộ sinh slug tự động chuẩn hóa tiếng Việt
-│   │   └── supabase/client.ts             # Khởi tạo Supabase client an toàn
+│   │   └── supabase/
+│   │       ├── client.ts                  # Supabase client (anon key, phía client/đọc public)
+│   │       └── admin.ts                   # Supabase admin (service role, chỉ dùng phía server)
 │   └── types/
 │       └── portfolio.ts                   # Định nghĩa kiểu dữ liệu TypeScript
 ├── supabase/

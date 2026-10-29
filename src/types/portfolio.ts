@@ -38,6 +38,10 @@ export interface ProjectFormData {
   category?: string;
   location?: string;
   camera_info?: string;
+  // Optional ISO-8601 overrides for backdating (API use).
+  // published_at only takes effect when status is 'published'.
+  published_at?: string | null;
+  created_at?: string;
   images: Array<{
     id?: string;
     image_url: string;

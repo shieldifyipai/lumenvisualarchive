@@ -489,7 +489,11 @@ export default function ProjectForm({ initialProject, isEdit = false }: ProjectF
                   onChange={(e) => setYear(Number(e.target.value))}
                   className="w-full px-3 py-2.5 rounded-xl bg-zinc-950 border border-white/10 text-sm font-mono text-white focus:outline-none focus:border-amber-400 transition-all"
                 >
-                  {[2027, 2026, 2025, 2024, 2023, 2022, 2021, 2020].map((y) => (
+                  {/* Descending: current year down to 2000 */}
+                  {Array.from(
+                    { length: new Date().getFullYear() - 2000 + 1 },
+                    (_, i) => new Date().getFullYear() - i
+                  ).map((y) => (
                     <option key={y} value={y}>
                       {y}
                     </option>

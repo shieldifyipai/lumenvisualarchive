@@ -1,5 +1,6 @@
 import { Project, ProjectFormData, ProjectImage } from '@/types/portfolio';
 import { supabase, isSupabaseConfigured } from './supabase/client';
+import { supabaseAdmin, isSupabaseAdminConfigured } from './supabase/admin';
 import { INITIAL_PROJECTS } from './mock-data';
 
 const STORAGE_KEY = 'lumina_portfolio_projects_v1';
@@ -333,8 +334,11 @@ export const dataService = {
       category: formData.category || 'Editorial',
       location: formData.location || '',
       camera_info: formData.camera_info || '',
-      created_at: now,
-      published_at: formData.status === 'published' ? now : null,
+      created_at: formData.created_at || now,
+      published_at:
+        formData.status === 'published'
+          ? formData.published_at || now
+          : null,
       images: formData.images.map((img, idx) => ({
         id: img.id || `img-${Date.now()}-${idx}`,
         project_id: projectId,
@@ -442,5 +446,159 @@ export const dataService = {
     const updated = projects.filter((p) => p.id !== id);
     saveStoredProjects(updated);
     return true;
+  },
+
+  // ---------------------------------------------------------------------------
+  // Server-side write methods used by the REST API route handlers.
+  // They use the service-role client so they work regardless of RLS/admin login.
+  // ---------------------------------------------------------------------------
+
+  isSupabaseAdminEnabled(): boolean {
+    return isSupabaseAdminConfigured && supabaseAdmin !== null;
+  },
+
+  async saveProjectAdmin(
+    formData: ProjectFormData,
+    existingId?: string
+  ): Promise<Project> {
+    // When a service-role client is available, write straight to Supabase.
+    if (this.isSupabaseAdminEnabled()) {
+      const now = new Date().toISOString();
+
+      const tableData = {
+        title: formData.title.trim(),
+        slug: formData.slug.trim(),
+        year: formData.year,
+        description: formData.description,
+        cover_image: formData.cover_image || formData.images[0]?.image_url || '',
+        status: formData.status,
+        category: formData.category || 'Editorial',
+        location: formData.location || '',
+        camera_info: formData.camera_info || '',
+        // Honor an explicit ISO-8601 published_at (e.g. backdated import),
+        // otherwise stamp "now" when publishing.
+        published_at:
+          formData.status === 'published'
+            ? formData.published_at || now
+            : null,
+      };
+
+      let projectId = existingId;
+
+      if (!projectId) {
+        const insertPayload: Record<string, unknown> = { ...tableData };
+        if (formData.created_at) insertPayload.created_at = formData.created_at;
+
+        const { data: inserted, error } = await supabaseAdmin!
+          .from('projects')
+          .insert([insertPayload])
+          .select()
+          .single();
+
+        if (error) throw new Error(`Supabase insert failed: ${error.message}`);
+        projectId = inserted.id;
+      } else {
+        // Keep the original created_at / published_at when a project is updated.
+        const { data: existing } = await supabaseAdmin!
+          .from('projects')
+          .select('created_at, published_at')
+          .eq('id', projectId)
+          .single();
+
+        const updatePayload: Record<string, unknown> = {
+          ...tableData,
+          published_at:
+            formData.status === 'published'
+              ? formData.published_at || existing?.published_at || now
+              : null,
+        };
+        if (formData.created_at) updatePayload.created_at = formData.created_at;
+
+        const { error } = await supabaseAdmin!
+          .from('projects')
+          .update(updatePayload)
+          .eq('id', projectId);
+
+        if (error) throw new Error(`Supabase update failed: ${error.message}`);
+
+        // Re-sync images
+        await supabaseAdmin!
+          .from('project_images')
+          .delete()
+          .eq('project_id', projectId);
+      }
+
+      if (formData.images.length > 0) {
+        const imageRows = formData.images.map((img, index) => ({
+          project_id: projectId,
+          image_url: img.image_url,
+          alt_text: img.alt_text || formData.title,
+          caption: img.caption || '',
+          sort_order: index,
+          width: img.width ?? null,
+          height: img.height ?? null,
+        }));
+
+        const { error: imgError } = await supabaseAdmin!
+          .from('project_images')
+          .insert(imageRows);
+
+        if (imgError) {
+          throw new Error(`Supabase image sync failed: ${imgError.message}`);
+        }
+      }
+
+      // Read back with the admin client — drafts are invisible to the
+      // anon key because of RLS ("public can view published only").
+      const { data: saved } = await supabaseAdmin!
+        .from('projects')
+        .select('*, project_images(*)')
+        .eq('id', projectId!)
+        .single();
+
+      if (saved) {
+        return {
+          ...saved,
+          images:
+            saved.project_images?.sort(
+              (a: ProjectImage, b: ProjectImage) => a.sort_order - b.sort_order
+            ) || [],
+        };
+      }
+
+      // Fallback shape if the read-back misses
+      return {
+        id: projectId!,
+        ...tableData,
+        created_at: now,
+        images: formData.images.map((img, index) => ({
+          id: img.id || `img-${Date.now()}-${index}`,
+          project_id: projectId!,
+          image_url: img.image_url,
+          alt_text: img.alt_text || formData.title,
+          caption: img.caption || '',
+          sort_order: index,
+          width: img.width ?? null,
+          height: img.height ?? null,
+          created_at: now,
+        })),
+      };
+    }
+
+    // Local demo mode: delegate to the regular save (in-memory + localStorage).
+    return this.saveProject(formData, existingId);
+  },
+
+  async deleteProjectAdmin(id: string): Promise<boolean> {
+    if (this.isSupabaseAdminEnabled()) {
+      const { error } = await supabaseAdmin!
+        .from('projects')
+        .delete()
+        .eq('id', id);
+      if (error) throw new Error(`Supabase delete failed: ${error.message}`);
+      return true;
+    }
+
+    return this.deleteProject(id);
   },
 };
